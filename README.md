@@ -2,7 +2,7 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-This repository now contains the first scaffold for a macOS-native voice input project.
+I work on a Mac but need to access remote Windows servers through Horizon Client. I tried a number of STT tools on the market, including Typeless, Doubao Input Method, and TypeNo, but none of them worked properly inside the remote desktop session. In the end, I vibe-coded OmniVoice to solve the specific problem of STT not being usable inside Horizon Client.
 
 ## Quick Start
 

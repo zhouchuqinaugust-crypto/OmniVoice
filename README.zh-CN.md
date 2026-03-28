@@ -2,7 +2,7 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-因为工作需要在 Mac 上通过 Horizon Client 在远程的 Windows 服务器里工作，尝试了市面上很多STT软件，比如Typeless，豆包输入法，TypeNo，都没有办法在远程桌面上正常使用，无奈自己vibe coding了一个。主要就是解决在Horizon Client无法使用STT软件的问题。
+因为工作需要在 Mac 上通过 Horizon Client 在远程的 Windows 服务器里工作，尝试了市面上很多 STT 软件，比如 Typeless、豆包输入法、TypeNo，都没有办法在远程桌面上正常使用。最后只能自己 vibe coding 了一个 OmniVoice，主要就是为了解决 Horizon Client 里无法正常使用 STT 软件的问题。
 
 ## 快速开始
 
