@@ -2,7 +2,7 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-这是一个面向 macOS 的原生语音输入项目，目前已经具备可用的 MVP 形态。
+因为工作需要在 Mac 上通过 Horizon Client 在远程的 Windows 服务器里工作，尝试了市面上很多STT软件，比如Typeless，豆包输入法，TypeNo，都没有办法在远程桌面上正常使用，无奈自己vibe coding了一个。主要就是解决在Horizon Client无法使用STT软件的问题。
 
 ## 快速开始
 
