@@ -1,0 +1,94 @@
+{
+  "appName" : "OmniVoice",
+  "ask" : {
+    "apiKeyEnvironmentVariable" : "OPENROUTER_API_KEY",
+    "baseURL" : "https:\/\/openrouter.ai\/api\/v1",
+    "defaultModel" : "openrouter\/auto",
+    "keychainAccount" : "ask-api-key",
+    "keychainService" : "OmniVoice",
+    "provider" : "customOpenAICompatible",
+    "supportsImageContext" : true,
+    "systemPrompt" : "You are a concise desktop assistant. Prefer actionable answers. Preserve technical terms and mixed Chinese-English terminology."
+  },
+  "dictionary" : {
+    "entries" : [
+
+    ],
+    "filePath" : "Config\/dictionary.json"
+  },
+  "hotkeys" : {
+    "askClipboard" : {
+      "keyCode" : -1,
+      "modifiers" : [
+        "rightCommand",
+        "rightOption"
+      ]
+    },
+    "askScreenshot" : {
+      "keyCode" : 49,
+      "modifiers" : [
+        "rightOption"
+      ]
+    },
+    "askSelectedText" : {
+      "keyCode" : 7,
+      "modifiers" : [
+        "command",
+        "option"
+      ]
+    },
+    "runDoctor" : {
+      "keyCode" : 2,
+      "modifiers" : [
+        "command",
+        "option"
+      ]
+    },
+    "toggleDictation" : {
+      "keyCode" : -1,
+      "modifiers" : [
+        "rightOption"
+      ]
+    }
+  },
+  "insertion" : {
+    "localDefault" : {
+      "attemptCount" : 1,
+      "delayMilliseconds" : 0,
+      "mode" : "directAccessibility",
+      "retryIntervalMilliseconds" : 0,
+      "shouldRestoreClipboard" : false
+    },
+    "remoteAppHints" : [
+      "Omnissa Horizon Client",
+      "VMware Horizon Client",
+      "Citrix Workspace",
+      "Microsoft Remote Desktop"
+    ],
+    "remoteDefault" : {
+      "attemptCount" : 1,
+      "delayMilliseconds" : 900,
+      "mode" : "remoteSafePaste",
+      "retryIntervalMilliseconds" : 0,
+      "shouldRestoreClipboard" : true
+    }
+  },
+  "stt" : {
+    "acceleration" : "mlx",
+    "binaryPath" : "STT\/whisper-cli",
+    "localeHints" : [
+      "zh-CN",
+      "en-US"
+    ],
+    "mlxModel" : "mlx-community\/whisper-large-v3-turbo",
+    "mlxPythonPath" : ".venv-mlx\/bin\/python",
+    "mode" : "localWhisper",
+    "modelPath" : "STT\/ggml-medium.bin",
+    "promptTerms" : [
+      "OpenCLAW",
+      "Horizon Client",
+      "Typeless"
+    ],
+    "threadCount" : 10
+  }
+}

@@ -1,0 +1,14 @@
+[
+  {
+    "spokenForms": ["open claw", "openclaw"],
+    "target": "OpenCLAW"
+  },
+  {
+    "spokenForms": ["horizon client", "vmware horizon"],
+    "target": "Horizon Client"
+  },
+  {
+    "spokenForms": ["ask anything"],
+    "target": "Ask Anything"
+  }
+]
