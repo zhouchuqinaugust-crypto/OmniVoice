@@ -1,5 +1,7 @@
 # OmniVoice
 
+[English](README.md) | [简体中文](README.zh-CN.md)
+
 This repository now contains the first scaffold for a macOS-native voice input project.
 
 ## Quick Start
