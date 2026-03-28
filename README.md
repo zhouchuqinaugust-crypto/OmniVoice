@@ -2,7 +2,10 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-I work on a Mac but need to access remote Windows servers through Horizon Client. I tried a number of STT tools on the market, including Typeless, Doubao Input Method, and TypeNo, but none of them worked properly inside the remote desktop session. In the end, I vibe-coded OmniVoice to solve the specific problem of STT not being usable inside Horizon Client. For the speech-to-text part alone, OmniVoice runs fully locally, does not require any API, and does not cost money to use.
+I built OmniVoice because I needed to work on remote Windows servers from a Mac through Horizon Client, and a bunch of STT tools I tried, including Typeless, Doubao Input Method, and TypeNo, just would not behave properly inside the remote desktop session. So I ended up vibe-coding my own fix for the very specific problem of STT not really working inside Horizon Client.
+
+1. The speech-to-text part runs fully locally. No API, no usage cost. Right now, this is the only module I use day to day.
+2. I am on an M4 Pro. With Whisper Large Turbo, it feels maybe a tiny bit slower than Typeless, but still totally usable. Accuracy has been solid, and it handles mixed Chinese and English pretty well.
 
 ## Quick Start
 

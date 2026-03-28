@@ -2,7 +2,10 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-因为工作需要在 Mac 上通过 Horizon Client 在远程的 Windows 服务器里工作，尝试了市面上很多 STT 软件，比如 Typeless、豆包输入法、TypeNo，都没有办法在远程桌面上正常使用。最后只能自己 vibe coding 了一个 OmniVoice，主要就是为了解决 Horizon Client 里无法正常使用 STT 软件的问题。单纯从“语音转文字”这一个模块来看，它是完全本地处理的，不需要任何 API，也不需要花任何钱。
+因为需要在 Mac 上通过 Horizon Client 在远程的 Windows 服务器里工作，尝试了市面上很多 STT 软件，比如 Typeless、豆包输入法、TypeNo，都没有办法在远程桌面上正常使用。最后只能自己 vibe coding 了一个，主要就是为了解决 Horizon Client 里无法正常使用 STT 软件的问题。
+
+1. 语音转文字部分是完全本地处理的，不需要 API，不花钱，我现在只用这一个模块
+2. 我的电脑是 M4 Pro，用 whisper large turbo 速度还行，比 Typeless 体感慢一丢丢，识别准确率也挺好，中英文混说也能转译。
 
 ## 快速开始
 
