@@ -2,6 +2,8 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
+当前版本：`0.0.2`。详细更新说明见 [CHANGELOG.md](CHANGELOG.md)。
+
 因为需要在 Mac 上通过 Horizon Client 在远程的 Windows 服务器里工作，尝试了市面上很多 STT 软件，比如 Typeless、豆包输入法、TypeNo，都没有办法在远程桌面上正常使用。最后只能自己 vibe coding 了一个，主要就是为了解决 Horizon Client 里无法正常使用 STT 软件的问题。
 
 1. 语音转文字部分是完全本地处理的，不需要 API，不花钱，我现在只用这一个模块
@@ -29,15 +31,18 @@ python3 -m venv .venv-mlx
 - 仓库本身不包含 Whisper 模型二进制，也不包含 Hugging Face 缓存。
 - 第一次运行 MLX 模式时，会从 Hugging Face 下载配置好的模型，可能需要几分钟。
 - 本地历史记录、虚拟环境和 app bundle 构建产物默认不会纳入版本控制。
+- `0.0.2` 这一版还是 source-first release，暂时不附带打包好的 app，因为当前本地 bundle 可能会包含很大的 STT 模型文件。
 
 ## 当前范围
 
 - 本地 STT 默认支持 `Automatic Local`，优先使用 `whisper.cpp`，找不到时回退到 Apple Speech。
+- MLX Whisper 已经支持本地听写，也是我目前在 Apple Silicon 上主要使用的较快路径。
 - `Ask Anything` 走云端优先的 provider 抽象，目前已经支持通用的 OpenAI-compatible API。
 - 主流程中已经支持字典归一化。
 - 文本插入策略会区分本地应用和远程桌面类应用。
 - 剪贴板文本、剪贴板图片和最近截图上下文都可以在本地解析。
 - 当前已支持通过保留剪贴板的自动化方式获取选中文本。
+- 本地录音文件可以通过 `transcribe-file` CLI 或菜单栏拖拽 UI 导出成 `.txt`。
 
 ## 当前包结构
 
@@ -45,6 +50,19 @@ python3 -m venv .venv-mlx
   核心模型、配置、字典归一化、STT 抽象、OpenAI-compatible Ask provider、上下文解析和插入规划。
 - `Sources/Playground`
   一个可执行目标，用来运行 demo 流程、检查上下文解析结果，或者执行 Ask 请求。
+
+## 版本说明
+
+- 最新版本：`0.0.2`
+- 主要变化：
+  - 新增拖拽式离线录音文件转写，导出为 `.txt`
+  - 长录音分段进度显示，并修复 chunk 被静默丢弃的问题
+  - `m4a` / `mp3` / `mp4` 支持通过 `ffmpeg` 或 macOS `afconvert` 解码
+  - 配置文件改为原子写入，并保留 `.bak` 备份
+  - History 写入串行化，并限制保留最近 1,000 条
+  - STT 增加超时处理，错误信息更偏人话
+  - 菜单栏改为紧凑图标，菜单重新分组，并新增正式 macOS app icon
+- 完整更新说明见：[CHANGELOG.md](CHANGELOG.md)
 
 ## Ask Provider 配置
 
@@ -128,7 +146,7 @@ python3 -m venv .venv-mlx
 - `auto` 加速会优先尝试 Metal，失败时在当前运行中回退到 CPU。
 - `mlx` 模式通过外部 Python runtime 加 `mlx-whisper` 实现；仓库内当前使用的是 `.venv-mlx/bin/python`。
 - 内置的 MLX runner 会直接解码 PCM WAV，所以应用录出来的 `.wav` 文件不依赖 `ffmpeg`。
-- 非 WAV 音频在系统装了 `ffmpeg` 且可从 `PATH` 访问时也可以处理。
+- 非 WAV 音频在系统装了 `ffmpeg` 且可从 `PATH` 访问时也可以处理；文件转写还会在没有 `ffmpeg` 时回退到 macOS 自带的 `afconvert`。
 
 ## MLX 安装
 
@@ -176,34 +194,21 @@ python3 -m venv .venv-mlx
 
 ## 当前 UI 外壳
 
-- `ui` 会启动一个最小可用的菜单栏应用。
-- 当前菜单支持：
+- `ui` 会启动一个菜单栏应用，菜单栏里显示紧凑的声波图标。
+- 顶层操作：
   - 开始 / 停止听写
-  - 插入上一条 transcript
-  - 插入上一条 answer
-  - 复制上一条 transcript
-  - 复制上一条 answer
-  - 打开 History 查看最近 transcript / answer 事件
   - 打开可拖拽的录音文件转写窗口，把本地录音导出为 `.txt`
-  - 从选中文本发起 Ask
-  - 从剪贴板发起 Ask
-  - 从最近截图发起 Ask
-  - 检查自动上下文解析结果
-  - 打开带实时诊断和快捷操作的 Setup 窗口
-  - 查看当前快捷键
-  - 打开可编辑的 Settings 窗口
-  - 打开处理中英混合归一化规则的 Dictionary 编辑器
-  - 自动检测本地 STT 路径
-  - 打开配置文件
-  - 请求权限
-  - 跑 doctor 诊断
   - 退出
+- `Ask` 子菜单支持选中文本、剪贴板和截图上下文。
+- `Library` 子菜单支持 History、插入上一条 transcript / answer、复制上一条 transcript / answer。
+- `Tools` 子菜单包含 Settings、Dictionary、Setup、Hotkeys、上下文检查、STT 自动检测、打开配置文件、请求权限和 Doctor。
 - 从 Settings 保存时，会重写 `Config/app-config.json`，把新的 Ask API key 存进 Keychain，并立即让后续的 dictation / Ask 请求使用新配置。
 - 从 Dictionary 保存时，如果配置了外部字典文件，会重写 `Config/dictionary.json`，并重新加载归一化规则。
 
 ## 历史记录
 
 - Ask 结果和 demo transcript 会追加写入 `Data/history.jsonl`。
+- History 会自动轮转，只保留最近 1,000 条，避免无限增长。
 - 可以通过设置 `OMNIVOICE_HISTORY_PATH` 把历史记录重定向到别的位置。
 
 ## 自动化权限

@@ -2,6 +2,8 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
+Current version: `0.0.2`. See [CHANGELOG.md](CHANGELOG.md) for release notes.
+
 I built OmniVoice because I needed to work on remote Windows servers from a Mac through Horizon Client, and a bunch of STT tools I tried, including Typeless, Doubao Input Method, and TypeNo, just would not behave properly inside the remote desktop session. So I ended up vibe-coding my own fix for the very specific problem of STT not really working inside Horizon Client.
 
 1. The speech-to-text part runs fully locally. No API, no usage cost. Right now, this is the only module I use day to day.
@@ -29,15 +31,18 @@ Notes:
 - The repository does not ship Whisper model binaries or Hugging Face caches.
 - The first MLX run downloads the configured model from Hugging Face and can take several minutes.
 - Local history, virtual environments, and app bundles are intentionally excluded from version control.
+- Release `0.0.2` is source-first. A packaged app artifact is not attached yet because the local bundle can include large STT model files.
 
 ## Current scope
 
 - Local STT defaults to `Automatic Local`, which prefers `whisper.cpp` when available and falls back to Apple Speech when it is not.
+- MLX Whisper is supported for local dictation and is the fastest path I currently use on Apple Silicon.
 - Ask Anything is modeled as a cloud-first provider layer and now supports real OpenAI-compatible APIs.
 - Dictionary normalization is part of the main pipeline.
 - Insertion planning distinguishes local apps from remote session clients.
 - Clipboard text, clipboard image, and recent screenshot contexts can now be resolved locally.
 - Selected-text capture is supported through a clipboard-preserving automation fallback.
+- Local audio files can be exported to `.txt` through the `transcribe-file` CLI or the drag-and-drop menu bar UI.
 
 ## Current package structure
 
@@ -45,6 +50,19 @@ Notes:
   Core models, configuration, dictionary normalization, STT abstraction, OpenAI-compatible Ask provider support, context resolution, and insertion planning.
 - `Sources/Playground`
   A small executable that can run the demo pipeline, inspect resolved context, or execute an Ask request.
+
+## Release notes
+
+- Latest release: `0.0.2`
+- Main changes:
+  - Drag-and-drop offline audio-file transcription to `.txt`
+  - Long-recording chunk progress and safer chunk handling
+  - `m4a` / `mp3` / `mp4` decoding through `ffmpeg` or macOS `afconvert`
+  - Configuration atomic writes with `.bak` backups
+  - History write serialization and 1,000-event rotation
+  - STT timeout handling and clearer user-facing errors
+  - Compact menu bar icon, grouped menu items, and a proper macOS app icon
+- Full notes: [CHANGELOG.md](CHANGELOG.md)
 
 ## Ask provider setup
 
@@ -128,7 +146,7 @@ Notes:
 - `auto` acceleration prefers Metal and falls back to CPU if the GPU path fails during the current app run.
 - `mlx` runs through an external Python runtime plus `mlx-whisper`; the repo-local setup I used is `.venv-mlx/bin/python`.
 - The bundled MLX runner decodes PCM WAV directly, so app-recorded `.wav` files do not require `ffmpeg`.
-- Non-WAV audio can still be handled through `ffmpeg` when it is installed and available on `PATH`.
+- Non-WAV audio can still be handled through `ffmpeg` when it is installed and available on `PATH`; file transcription also has a macOS `afconvert` fallback.
 
 ## MLX Setup
 
@@ -176,34 +194,21 @@ Notes:
 
 ## Current UI shell
 
-- `ui` launches a minimal menu bar app.
-- The menu currently supports:
+- `ui` launches a menu bar app with a compact waveform icon.
+- Top-level actions:
   - Start / stop dictation
-  - Insert last transcript
-  - Insert last answer
-  - Copy last transcript
-  - Copy last answer
-  - Open History for recent transcript/answer events
   - Open a drag-and-drop audio file transcription window for exporting local recordings to `.txt`
-  - Ask from selected text
-  - Ask from clipboard
-  - Ask from recent screenshot
-  - Inspect resolved automatic context
-  - Open a Setup window with live diagnostics and quick actions
-  - Show configured hotkeys
-  - Open an editable Settings window for STT, Ask, and hotkeys
-  - Open a Dictionary editor for mixed Chinese-English normalization rules
-  - Auto-detect local STT paths
-  - Open the config file
-  - Request permissions
-  - Run doctor diagnostics
   - Quit
+- The `Ask` submenu supports selected text, clipboard, and screenshot context.
+- The `Library` submenu supports history, last transcript/answer insertion, and last transcript/answer copy.
+- The `Tools` submenu contains Settings, Dictionary, Setup, Hotkeys, Context inspection, STT auto-detection, config opening, permission requests, and Doctor.
 - Saving from Settings rewrites `Config/app-config.json`, stores any new Ask API key in Keychain, and applies the updated runtime to new dictation and Ask requests immediately.
 - Saving from Dictionary rewrites `Config/dictionary.json` when an external dictionary file is configured and reloads normalization rules for future dictation runs.
 
 ## History
 
 - Ask results and demo transcripts are appended to `Data/history.jsonl`.
+- History is rotated to the latest 1,000 events to avoid unbounded growth.
 - Set `OMNIVOICE_HISTORY_PATH` to redirect history storage elsewhere.
 
 ## Automation permissions
