@@ -9,7 +9,6 @@ import wave
 from pathlib import Path
 from typing import Optional
 
-import mlx_whisper
 import numpy as np
 
 
@@ -145,6 +144,17 @@ def high_pass_filter(audio: np.ndarray, cutoff_hz: float = HIGH_PASS_CUTOFF_HZ) 
     dt = 1.0 / TARGET_SAMPLE_RATE
     rc = 1.0 / (2.0 * np.pi * cutoff_hz)
     alpha = rc / (rc + dt)
+
+    try:
+        from scipy.signal import lfilter
+
+        return lfilter(
+            [alpha, -alpha],
+            [1.0, -alpha],
+            audio.astype(np.float32, copy=False),
+        ).astype(np.float32)
+    except Exception:
+        pass
 
     filtered = np.empty_like(audio, dtype=np.float32)
     previous_input = float(audio[0])
@@ -300,6 +310,8 @@ def transcribe_audio(
     prompt: Optional[str],
     language: Optional[str],
 ) -> dict:
+    import mlx_whisper
+
     decode_options = {
         "path_or_hf_repo": args.model,
         "verbose": None,

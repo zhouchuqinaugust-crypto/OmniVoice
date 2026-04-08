@@ -2,6 +2,7 @@ import Foundation
 
 public enum ConfigurationLoaderError: LocalizedError, Sendable {
     case invalidPath(String)
+    case invalidConfiguration(String, [String])
     case unableToRead(String, Error)
     case unableToDecode(String, Error)
     case unableToEncode(String, Error)
@@ -11,6 +12,8 @@ public enum ConfigurationLoaderError: LocalizedError, Sendable {
         switch self {
         case .invalidPath(let path):
             return "Invalid configuration path: \(path)"
+        case .invalidConfiguration(let path, let messages):
+            return "Invalid configuration at \(path): \(messages.joined(separator: "; "))"
         case .unableToRead(let path, let error):
             return "Unable to read configuration at \(path): \(error.localizedDescription)"
         case .unableToDecode(let path, let error):
@@ -73,7 +76,7 @@ public struct ConfigurationLoader {
         do {
             let data = try encoder.encode(configuration)
             try fileManager.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try data.write(to: url)
+            try writeAtomically(data, to: url)
         } catch let error as EncodingError {
             throw ConfigurationLoaderError.unableToEncode(path, error)
         } catch {
@@ -94,7 +97,7 @@ public struct ConfigurationLoader {
         do {
             let data = try encoder.encode(entries)
             try fileManager.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try data.write(to: url)
+            try writeAtomically(data, to: url)
         } catch let error as EncodingError {
             throw ConfigurationLoaderError.unableToEncode(resolvedPath, error)
         } catch {
@@ -136,11 +139,82 @@ public struct ConfigurationLoader {
 
         do {
             let data = try Data(contentsOf: url)
-            return try decoder.decode(AppConfiguration.self, from: data)
+            let configuration = try decoder.decode(AppConfiguration.self, from: data)
+            let validationErrors = validate(configuration)
+            guard validationErrors.isEmpty else {
+                throw ConfigurationLoaderError.invalidConfiguration(path, validationErrors)
+            }
+            return configuration
         } catch let error as DecodingError {
             throw ConfigurationLoaderError.unableToDecode(path, error)
+        } catch let error as ConfigurationLoaderError {
+            throw error
         } catch {
             throw ConfigurationLoaderError.unableToRead(path, error)
         }
+    }
+
+    private func writeAtomically(_ data: Data, to url: URL) throws {
+        let directoryURL = url.deletingLastPathComponent()
+        let temporaryURL = directoryURL.appendingPathComponent(
+            ".\(url.lastPathComponent).\(UUID().uuidString).tmp"
+        )
+        let backupURL = url.appendingPathExtension("bak")
+
+        try data.write(to: temporaryURL, options: [.atomic])
+        if fileManager.fileExists(atPath: url.path) {
+            _ = try? fileManager.removeItem(at: backupURL)
+            try fileManager.copyItem(at: url, to: backupURL)
+            _ = try fileManager.replaceItemAt(url, withItemAt: temporaryURL, backupItemName: nil, options: [])
+        } else {
+            try fileManager.moveItem(at: temporaryURL, to: url)
+        }
+        if fileManager.fileExists(atPath: temporaryURL.path) {
+            try? fileManager.removeItem(at: temporaryURL)
+        }
+    }
+
+    private func validate(_ configuration: AppConfiguration) -> [String] {
+        var errors: [String] = []
+
+        if configuration.appName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            errors.append("appName must not be empty")
+        }
+
+        if let threadCount = configuration.stt.threadCount, threadCount <= 0 {
+            errors.append("stt.threadCount must be greater than 0 when set")
+        }
+
+        if let binaryPath = configuration.stt.binaryPath, binaryPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            errors.append("stt.binaryPath must not be an empty string")
+        }
+
+        if let modelPath = configuration.stt.modelPath, modelPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            errors.append("stt.modelPath must not be an empty string")
+        }
+
+        if let mlxPythonPath = configuration.stt.mlxPythonPath, mlxPythonPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            errors.append("stt.mlxPythonPath must not be an empty string")
+        }
+
+        if let mlxModel = configuration.stt.mlxModel, mlxModel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            errors.append("stt.mlxModel must not be an empty string")
+        }
+
+        let localDefault = configuration.insertion.localDefault
+        let remoteDefault = configuration.insertion.remoteDefault
+        for (name, plan) in [("insertion.localDefault", localDefault), ("insertion.remoteDefault", remoteDefault)] {
+            if plan.delayMilliseconds < 0 {
+                errors.append("\(name).delayMilliseconds must not be negative")
+            }
+            if plan.attemptCount <= 0 {
+                errors.append("\(name).attemptCount must be greater than 0")
+            }
+            if plan.retryIntervalMilliseconds < 0 {
+                errors.append("\(name).retryIntervalMilliseconds must not be negative")
+            }
+        }
+
+        return errors
     }
 }

@@ -10,7 +10,9 @@ DerivedData/
 /.venv-mlx
 /Data
 /tmp
+/.tmp-pycache
 /AGENT_HANDOFF.md
+/OmniVoice-Review.docx
 /vendor
 /vendor/models/*.bin
 /vendor/models/*.gguf

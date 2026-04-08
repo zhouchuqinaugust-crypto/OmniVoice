@@ -23,11 +23,14 @@ final class MenuBarApplicationController: NSObject, NSApplicationDelegate {
     private var dictionaryWindowController: DictionaryEditorWindowController?
     private var setupWindowController: SetupWindowController?
     private var historyWindowController: HistoryWindowController?
+    private var audioFileTranscriptionWindowController: AudioFileTranscriptionWindowController?
     private var activeTranscriptionTask: Task<Void, Never>?
+    private var audioFileTranscriptionExporter: AudioFileTranscriptionExporter
 
     init(
         configuration: AppConfiguration,
         coordinator: AppCoordinator,
+        audioFileTranscriptionExporter: AudioFileTranscriptionExporter,
         contextResolver: ContextResolver,
         historyStore: HistoryStore,
         hotkeys: HotkeyConfiguration,
@@ -37,6 +40,7 @@ final class MenuBarApplicationController: NSObject, NSApplicationDelegate {
     ) {
         self.configuration = configuration
         self.coordinator = coordinator
+        self.audioFileTranscriptionExporter = audioFileTranscriptionExporter
         self.contextResolver = contextResolver
         self.historyStore = historyStore
         self.hotkeys = hotkeys
@@ -63,7 +67,10 @@ final class MenuBarApplicationController: NSObject, NSApplicationDelegate {
         self.statusItem = statusItem
 
         if let button = statusItem.button {
-            button.title = configuration.appName
+            button.title = ""
+            button.image = statusIcon(named: "waveform.circle", fallback: "waveform", accessibilityDescription: configuration.appName)
+            button.imagePosition = .imageOnly
+            button.toolTip = configuration.appName
         }
 
         let menu = NSMenu()
@@ -74,30 +81,76 @@ final class MenuBarApplicationController: NSObject, NSApplicationDelegate {
 
         menu.addItem(startRecordingItem)
         menu.addItem(stopRecordingItem)
+        menu.addItem(NSMenuItem(title: "Transcribe Audio File…", action: #selector(openAudioFileTranscription), keyEquivalent: "f"))
         menu.addItem(.separator())
-        menu.addItem(NSMenuItem(title: "Insert Last Transcript", action: #selector(insertLastTranscript), keyEquivalent: "1"))
-        menu.addItem(NSMenuItem(title: "Insert Last Answer", action: #selector(insertLastAnswer), keyEquivalent: "2"))
-        menu.addItem(NSMenuItem(title: "Copy Last Transcript", action: #selector(copyLastTranscript), keyEquivalent: "l"))
-        menu.addItem(NSMenuItem(title: "Copy Last Answer", action: #selector(copyLastAnswer), keyEquivalent: "a"))
-        menu.addItem(NSMenuItem(title: "Open History", action: #selector(openHistory), keyEquivalent: "y"))
-        menu.addItem(.separator())
-        menu.addItem(NSMenuItem(title: "Ask Selected Text", action: #selector(askSelectedText), keyEquivalent: "x"))
-        menu.addItem(NSMenuItem(title: "Ask Clipboard", action: #selector(askClipboard), keyEquivalent: "c"))
-        menu.addItem(NSMenuItem(title: "Ask Screenshot", action: #selector(askScreenshot), keyEquivalent: "s"))
-        menu.addItem(NSMenuItem(title: "Inspect Context", action: #selector(inspectAutoContext), keyEquivalent: "i"))
-        menu.addItem(NSMenuItem(title: "Open Setup", action: #selector(openSetup), keyEquivalent: "u"))
-        menu.addItem(NSMenuItem(title: "Show Hotkeys", action: #selector(showHotkeys), keyEquivalent: "h"))
-        menu.addItem(NSMenuItem(title: "Settings", action: #selector(openSettings), keyEquivalent: ","))
-        menu.addItem(NSMenuItem(title: "Edit Dictionary", action: #selector(openDictionaryEditor), keyEquivalent: ""))
-        menu.addItem(NSMenuItem(title: "Auto-Detect STT", action: #selector(autoDetectSTT), keyEquivalent: ""))
-        menu.addItem(NSMenuItem(title: "Open Config", action: #selector(openConfig), keyEquivalent: ""))
-        menu.addItem(NSMenuItem(title: "Request Permissions", action: #selector(requestPermissions), keyEquivalent: "p"))
-        menu.addItem(NSMenuItem(title: "Run Doctor", action: #selector(runDoctor), keyEquivalent: "d"))
+        menu.addItem(submenuItem(
+            title: "Ask",
+            items: [
+                NSMenuItem(title: "Ask Selected Text", action: #selector(askSelectedText), keyEquivalent: "x"),
+                NSMenuItem(title: "Ask Clipboard", action: #selector(askClipboard), keyEquivalent: "c"),
+                NSMenuItem(title: "Ask Screenshot", action: #selector(askScreenshot), keyEquivalent: "s"),
+            ]
+        ))
+        menu.addItem(submenuItem(
+            title: "Library",
+            items: [
+                NSMenuItem(title: "Open History", action: #selector(openHistory), keyEquivalent: "y"),
+                NSMenuItem(title: "Insert Last Transcript", action: #selector(insertLastTranscript), keyEquivalent: "1"),
+                NSMenuItem(title: "Insert Last Answer", action: #selector(insertLastAnswer), keyEquivalent: "2"),
+                NSMenuItem(title: "Copy Last Transcript", action: #selector(copyLastTranscript), keyEquivalent: "l"),
+                NSMenuItem(title: "Copy Last Answer", action: #selector(copyLastAnswer), keyEquivalent: "a"),
+            ]
+        ))
+        menu.addItem(submenuItem(
+            title: "Tools",
+            items: [
+                NSMenuItem(title: "Settings", action: #selector(openSettings), keyEquivalent: ","),
+                NSMenuItem(title: "Edit Dictionary", action: #selector(openDictionaryEditor), keyEquivalent: ""),
+                NSMenuItem(title: "Open Setup", action: #selector(openSetup), keyEquivalent: "u"),
+                NSMenuItem(title: "Show Hotkeys", action: #selector(showHotkeys), keyEquivalent: "h"),
+                NSMenuItem.separator(),
+                NSMenuItem(title: "Inspect Context", action: #selector(inspectAutoContext), keyEquivalent: "i"),
+                NSMenuItem(title: "Auto-Detect STT", action: #selector(autoDetectSTT), keyEquivalent: ""),
+                NSMenuItem(title: "Open Config", action: #selector(openConfig), keyEquivalent: ""),
+                NSMenuItem(title: "Request Permissions", action: #selector(requestPermissions), keyEquivalent: "p"),
+                NSMenuItem(title: "Run Doctor", action: #selector(runDoctor), keyEquivalent: "d"),
+            ]
+        ))
         menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "Quit", action: #selector(quit), keyEquivalent: "q"))
-        menu.items.forEach { $0.target = self }
+        applyTarget(to: menu)
         statusItem.menu = menu
         updateRecordingMenuState()
+    }
+
+    private func submenuItem(title: String, items: [NSMenuItem]) -> NSMenuItem {
+        let menuItem = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+        let submenu = NSMenu(title: title)
+        for item in items {
+            submenu.addItem(item)
+        }
+        menuItem.submenu = submenu
+        return menuItem
+    }
+
+    private func applyTarget(to menu: NSMenu) {
+        for item in menu.items {
+            if item.action != nil {
+                item.target = self
+            }
+            if let submenu = item.submenu {
+                applyTarget(to: submenu)
+            }
+        }
+    }
+
+    private func statusIcon(
+        named name: String,
+        fallback: String,
+        accessibilityDescription: String
+    ) -> NSImage? {
+        NSImage(systemSymbolName: name, accessibilityDescription: accessibilityDescription)
+            ?? NSImage(systemSymbolName: fallback, accessibilityDescription: accessibilityDescription)
     }
 
     private func registerHotKeys() {
@@ -132,7 +185,7 @@ final class MenuBarApplicationController: NSObject, NSApplicationDelegate {
                 }
             }
         } catch {
-            presentInfoAlert(title: "Hotkey Registration Failed", message: error.localizedDescription)
+            presentInfoAlert(title: "Hotkey Registration Failed", message: userFacingMessage(for: error))
         }
     }
 
@@ -158,7 +211,7 @@ final class MenuBarApplicationController: NSObject, NSApplicationDelegate {
             pasteboard.clearContents()
             pasteboard.setString(transcript, forType: .string)
         } catch {
-            presentInfoAlert(title: "Copy Failed", message: error.localizedDescription)
+            presentInfoAlert(title: "Copy Failed", message: userFacingMessage(for: error))
         }
     }
 
@@ -175,11 +228,11 @@ final class MenuBarApplicationController: NSObject, NSApplicationDelegate {
                     let context = contextResolver.resolveInsertionTargetContext()
                     _ = try await coordinator.insert(text: transcript, context: context)
                 } catch {
-                    presentInfoAlert(title: "Insert Failed", message: error.localizedDescription)
+                    presentInfoAlert(title: "Insert Failed", message: userFacingMessage(for: error))
                 }
             }
         } catch {
-            presentInfoAlert(title: "Insert Failed", message: error.localizedDescription)
+            presentInfoAlert(title: "Insert Failed", message: userFacingMessage(for: error))
         }
     }
 
@@ -195,7 +248,7 @@ final class MenuBarApplicationController: NSObject, NSApplicationDelegate {
             pasteboard.clearContents()
             pasteboard.setString(answer, forType: .string)
         } catch {
-            presentInfoAlert(title: "Copy Failed", message: error.localizedDescription)
+            presentInfoAlert(title: "Copy Failed", message: userFacingMessage(for: error))
         }
     }
 
@@ -218,6 +271,24 @@ final class MenuBarApplicationController: NSObject, NSApplicationDelegate {
     }
 
     @objc
+    private func openAudioFileTranscription() {
+        if audioFileTranscriptionWindowController == nil {
+            audioFileTranscriptionWindowController = AudioFileTranscriptionWindowController { [weak self] fileURL, options in
+                guard let self else {
+                    throw CancellationError()
+                }
+                return try await self.audioFileTranscriptionExporter.exportTranscription(
+                    of: fileURL,
+                    options: options
+                )
+            }
+        }
+
+        audioFileTranscriptionWindowController?.showWindow(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    @objc
     private func insertLastAnswer() {
         do {
             guard let answer = try historyStore.lastAnswer()?.answer else {
@@ -230,11 +301,11 @@ final class MenuBarApplicationController: NSObject, NSApplicationDelegate {
                     let context = contextResolver.resolveInsertionTargetContext()
                     _ = try await coordinator.insert(text: answer, context: context)
                 } catch {
-                    presentInfoAlert(title: "Insert Failed", message: error.localizedDescription)
+                    presentInfoAlert(title: "Insert Failed", message: userFacingMessage(for: error))
                 }
             }
         } catch {
-            presentInfoAlert(title: "Insert Failed", message: error.localizedDescription)
+            presentInfoAlert(title: "Insert Failed", message: userFacingMessage(for: error))
         }
     }
 
@@ -253,7 +324,7 @@ final class MenuBarApplicationController: NSObject, NSApplicationDelegate {
                     self?.cancelActiveDictationWorkflow()
                 }
             } catch {
-                dictationOverlayController.showError(error.localizedDescription)
+                dictationOverlayController.showError(userFacingMessage(for: error))
             }
         }
     }
@@ -321,14 +392,14 @@ final class MenuBarApplicationController: NSObject, NSApplicationDelegate {
                     await MainActor.run {
                         self.activeTranscriptionTask = nil
                         self.updateRecordingMenuState()
-                        self.dictationOverlayController.showError(error.localizedDescription)
+                        self.dictationOverlayController.showError(self.userFacingMessage(for: error))
                     }
                 }
             }
             activeTranscriptionTask = task
             updateRecordingMenuState()
         } catch {
-            dictationOverlayController.showError(error.localizedDescription)
+            dictationOverlayController.showError(userFacingMessage(for: error))
         }
     }
 
@@ -372,7 +443,7 @@ final class MenuBarApplicationController: NSObject, NSApplicationDelegate {
             let message = prettyPrintedJSON(report) ?? "null"
             presentInfoAlert(title: "Doctor Report", message: message)
         } catch {
-            presentInfoAlert(title: "Doctor Failed", message: error.localizedDescription)
+            presentInfoAlert(title: "Doctor Failed", message: userFacingMessage(for: error))
         }
     }
 
@@ -498,7 +569,7 @@ final class MenuBarApplicationController: NSObject, NSApplicationDelegate {
             let message = prettyPrintedJSON(context) ?? "null"
             presentInfoAlert(title: "Resolved Context", message: message)
         } catch {
-            presentInfoAlert(title: "Context Error", message: error.localizedDescription)
+            presentInfoAlert(title: "Context Error", message: userFacingMessage(for: error))
         }
     }
 
@@ -527,7 +598,7 @@ final class MenuBarApplicationController: NSObject, NSApplicationDelegate {
                 try historyStore.recordAsk(prompt: prompt, result: result)
                 presentAskResult(answer: result.response.answer)
             } catch {
-                presentInfoAlert(title: "Ask Failed", message: error.localizedDescription)
+                presentInfoAlert(title: "Ask Failed", message: userFacingMessage(for: error))
             }
         }
     }
@@ -562,6 +633,45 @@ final class MenuBarApplicationController: NSObject, NSApplicationDelegate {
         alert.runModal()
     }
 
+    private func userFacingMessage(for error: Error) -> String {
+        if let sttError = error as? STTProviderError {
+            switch sttError {
+            case .emptyTranscript:
+                return "No speech was detected. Check the microphone input level and try again."
+            case .transcriptionTimedOut:
+                return "Local speech recognition took too long and was stopped. Try a shorter dictation or switch to a smaller MLX model."
+            case .missingMLXPythonPath, .missingMLXModel, .missingMLXRunnerScript:
+                return "Local MLX speech recognition is not fully configured. Open Settings or run Doctor to check the MLX Python path and model."
+            case .missingBinaryPath, .missingModelPath:
+                return "Local whisper.cpp speech recognition is not fully configured. Open Settings or run Doctor to check the binary and model paths."
+            case .commandFailed(_, let output):
+                if output.localizedCaseInsensitiveContains("afconvert") ||
+                    output.localizedCaseInsensitiveContains("ffmpeg") {
+                    return "This audio format could not be decoded locally. Try exporting it as WAV, or install ffmpeg and retry."
+                }
+                if output.localizedCaseInsensitiveContains("permission") {
+                    return "Speech recognition failed because a local permission or file access check failed. Run Doctor for details."
+                }
+                return "Local speech recognition failed. Run Doctor for details, or try a smaller model."
+            case .invalidMLXResponse:
+                return "Local MLX speech recognition returned an unexpected response. Try again, or switch models in Settings."
+            default:
+                return sttError.localizedDescription
+            }
+        }
+
+        if let insertionError = error as? InsertionError {
+            switch insertionError {
+            case .unsupportedText:
+                return "There was no text to insert."
+            case .inputInjectionFailed:
+                return "OmniVoice could not send the paste shortcut. Check Accessibility permission and make sure the target window is focused."
+            }
+        }
+
+        return error.localizedDescription
+    }
+
     private func copyToPasteboard(_ text: String) {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
@@ -574,7 +684,7 @@ final class MenuBarApplicationController: NSObject, NSApplicationDelegate {
                 let context = contextResolver.resolveInsertionTargetContext()
                 _ = try await coordinator.insert(text: text, context: context)
             } catch {
-                presentInfoAlert(title: "Insert Failed", message: error.localizedDescription)
+                presentInfoAlert(title: "Insert Failed", message: userFacingMessage(for: error))
             }
         }
     }
@@ -584,7 +694,7 @@ final class MenuBarApplicationController: NSObject, NSApplicationDelegate {
             do {
                 try audioRecorder.cancelRecording()
             } catch {
-                dictationOverlayController.showError(error.localizedDescription)
+                dictationOverlayController.showError(userFacingMessage(for: error))
                 return
             }
 
@@ -610,11 +720,17 @@ final class MenuBarApplicationController: NSObject, NSApplicationDelegate {
 
         if let button = statusItem?.button {
             if audioRecorder.isRecording {
-                button.title = "\(configuration.appName) Rec"
+                button.title = ""
+                button.image = statusIcon(named: "waveform.circle.fill", fallback: "waveform.circle", accessibilityDescription: "OmniVoice recording")
+                button.contentTintColor = .systemRed
             } else if isTranscribing {
-                button.title = "\(configuration.appName) …"
+                button.title = ""
+                button.image = statusIcon(named: "waveform.badge.magnifyingglass", fallback: "waveform.circle", accessibilityDescription: "OmniVoice transcribing")
+                button.contentTintColor = .systemMint
             } else {
-                button.title = configuration.appName
+                button.title = ""
+                button.image = statusIcon(named: "waveform.circle", fallback: "waveform", accessibilityDescription: configuration.appName)
+                button.contentTintColor = nil
             }
         }
     }
@@ -657,12 +773,16 @@ final class MenuBarApplicationController: NSObject, NSApplicationDelegate {
             try configurationLoader.save(updated, to: configPath)
             configuration = updated
             self.coordinator = coordinator
+            audioFileTranscriptionExporter = try RuntimeFactory.makeAudioFileTranscriptionExporter(
+                configuration: updated,
+                loader: configurationLoader
+            )
             hotkeys = updated.hotkeys
             hotKeyManager.unregisterAll()
             registerHotKeys()
             refreshSetupWindow()
         } catch {
-            presentInfoAlert(title: "Save Failed", message: error.localizedDescription)
+            presentInfoAlert(title: "Save Failed", message: userFacingMessage(for: error))
         }
     }
 
@@ -684,9 +804,13 @@ final class MenuBarApplicationController: NSObject, NSApplicationDelegate {
 
             configuration = updatedConfiguration
             self.coordinator = coordinator
+            audioFileTranscriptionExporter = try RuntimeFactory.makeAudioFileTranscriptionExporter(
+                configuration: updatedConfiguration,
+                loader: configurationLoader
+            )
             refreshSetupWindow()
         } catch {
-            presentInfoAlert(title: "Dictionary Save Failed", message: error.localizedDescription)
+            presentInfoAlert(title: "Dictionary Save Failed", message: userFacingMessage(for: error))
         }
     }
 
@@ -776,6 +900,7 @@ enum MenuBarApplication {
     static func run(
         configuration: AppConfiguration,
         coordinator: AppCoordinator,
+        audioFileTranscriptionExporter: AudioFileTranscriptionExporter,
         configPath: String,
         contextResolver: ContextResolver,
         historyStore: HistoryStore,
@@ -785,6 +910,7 @@ enum MenuBarApplication {
         let delegate = MenuBarApplicationController(
             configuration: configuration,
             coordinator: coordinator,
+            audioFileTranscriptionExporter: audioFileTranscriptionExporter,
             contextResolver: contextResolver,
             historyStore: historyStore,
             hotkeys: hotkeys,

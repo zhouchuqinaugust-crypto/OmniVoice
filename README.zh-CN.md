@@ -140,6 +140,14 @@ python3 -m venv .venv-mlx
   - `./.build/debug/OmniVoice set-stt-acceleration mlx`
 - 第一次运行会把配置好的 MLX 模型下载到 Hugging Face 本地缓存。
 
+## 离线录音文件转写
+
+- `transcribe-file` 可以直接把本地录音文件转成 `.txt` 文本文件。
+- 长录音会自动分段处理，所以超过一小时的会议录音也不需要一次性整段塞进内存。
+- PCM WAV 开箱即用。像 `m4a`、`mp3`、`mp4` 这类常见格式，会优先使用 `ffmpeg`，没有 `ffmpeg` 时会回退到 macOS 自带的 `afconvert`。
+- 说话人区分是可选增强：只有在你传 `--diarize`、本地装了 `pyannote.audio`，并且环境变量里有 `PYANNOTE_AUTH_TOKEN`、`HF_TOKEN` 或 `HUGGINGFACE_TOKEN` 时才会尝试。
+- 如果当前环境做不了说话人区分，OmniVoice 仍然会先把 transcript 导出来，并在 JSON 结果里给出 warning，而不是整次任务直接失败。
+
 ## CLI 示例
 
 ```bash
@@ -151,6 +159,9 @@ python3 -m venv .venv-mlx
 ./.build/debug/OmniVoice ask --source screenshot "这张截图里的报错是什么意思？"
 ./.build/debug/OmniVoice insert --source auto "把这段文字贴到当前输入框"
 ./.build/debug/OmniVoice transcribe sample.wav --source auto --insert
+./.build/debug/OmniVoice transcribe-file meeting.m4a
+./.build/debug/OmniVoice transcribe-file meeting.m4a --output meeting.txt
+./.build/debug/OmniVoice transcribe-file panel.wav --diarize --chunk-seconds 1200
 ./.build/debug/OmniVoice history
 ./.build/debug/OmniVoice doctor
 ./.build/debug/OmniVoice request-permissions
@@ -173,6 +184,7 @@ python3 -m venv .venv-mlx
   - 复制上一条 transcript
   - 复制上一条 answer
   - 打开 History 查看最近 transcript / answer 事件
+  - 打开可拖拽的录音文件转写窗口，把本地录音导出为 `.txt`
   - 从选中文本发起 Ask
   - 从剪贴板发起 Ask
   - 从最近截图发起 Ask

@@ -50,6 +50,9 @@ mkdir -p "$MACOS_DIR" "$RESOURCES_DIR"
 
 cp "$BUILD_DIR/$APP_NAME" "$MACOS_DIR/$APP_NAME"
 cp "$ROOT_DIR/Packaging/Info.plist" "$CONTENTS_DIR/Info.plist"
+if [[ -f "$ROOT_DIR/Packaging/AppIcon.icns" ]]; then
+  cp "$ROOT_DIR/Packaging/AppIcon.icns" "$RESOURCES_DIR/AppIcon.icns"
+fi
 if [[ -d "$CONFIG_DIR" ]]; then
   mkdir -p "$RESOURCES_DIR/Config"
   cp "$CONFIG_DIR"/*.json "$RESOURCES_DIR/Config/" 2>/dev/null || true
@@ -57,6 +60,10 @@ fi
 if [[ -f "$ROOT_DIR/scripts/mlx_transcribe.py" ]]; then
   mkdir -p "$RESOURCES_DIR/scripts"
   cp "$ROOT_DIR/scripts/mlx_transcribe.py" "$RESOURCES_DIR/scripts/mlx_transcribe.py"
+fi
+if [[ -f "$ROOT_DIR/scripts/mlx_transcribe_file.py" ]]; then
+  mkdir -p "$RESOURCES_DIR/scripts"
+  cp "$ROOT_DIR/scripts/mlx_transcribe_file.py" "$RESOURCES_DIR/scripts/mlx_transcribe_file.py"
 fi
 if [[ -x "$STT_BINARY" || -f "$STT_MODEL" ]]; then
   mkdir -p "$RESOURCES_DIR/STT"

@@ -25,6 +25,7 @@ enum PlaygroundCLI {
             MenuBarApplication.run(
                 configuration: runtime.configuration,
                 coordinator: runtime.coordinator,
+                audioFileTranscriptionExporter: runtime.audioFileTranscriptionExporter,
                 configPath: runtime.configPath,
                 contextResolver: runtime.contextResolver,
                 historyStore: runtime.historyStore,
@@ -210,6 +211,16 @@ enum PlaygroundCLI {
                 )
                 try runtime.historyStore.recordTranscript(result.transcript, context: context)
                 try printJSON(result)
+            case .transcribeFile(let filePath, let outputPath, let shouldDiarize, let chunkDurationSeconds):
+                let result = try await runtime.audioFileTranscriptionExporter.exportTranscription(
+                    of: URL(fileURLWithPath: filePath),
+                    options: AudioFileTranscriptionExportOptions(
+                        outputFileURL: outputPath.map { URL(fileURLWithPath: $0) },
+                        shouldDiarize: shouldDiarize,
+                        chunkDurationSeconds: chunkDurationSeconds
+                    )
+                )
+                try printJSON(result)
             case .ask(let prompt, let source):
                 let context = try runtime.contextResolver.resolve(source: source)
                 let result = try await runtime.coordinator.ask(prompt: prompt, context: context)
@@ -244,6 +255,10 @@ enum PlaygroundCLI {
             historyStore: HistoryStore(),
             clipboardStore: ClipboardStore(),
             coordinator: coordinator,
+            audioFileTranscriptionExporter: try RuntimeFactory.makeAudioFileTranscriptionExporter(
+                configuration: configuration,
+                loader: loader
+            ),
             doctor: AppDoctor(configuration: configuration),
             contextResolver: ContextResolver()
         )
@@ -584,6 +599,7 @@ private struct Runtime {
     let historyStore: HistoryStore
     let clipboardStore: ClipboardStore
     let coordinator: AppCoordinator
+    let audioFileTranscriptionExporter: AudioFileTranscriptionExporter
     let doctor: AppDoctor
     let contextResolver: ContextResolver
 }
@@ -627,6 +643,7 @@ private enum Command {
     case insertLastAnswer(ContextSource)
     case insert(text: String, source: ContextSource)
     case transcribe(filePath: String, source: ContextSource, shouldInsert: Bool)
+    case transcribeFile(filePath: String, outputPath: String?, shouldDiarize: Bool, chunkDurationSeconds: Int)
     case context(ContextSource)
     case ask(prompt: String, source: ContextSource)
 
@@ -708,6 +725,8 @@ private enum Command {
             let shouldInsert = values.contains("--insert")
             let filePath = parseFirstPositionalValue(values, droppingFlags: ["--source", "--insert"])
             return .transcribe(filePath: filePath, source: source, shouldInsert: shouldInsert)
+        case "transcribe-file":
+            return try parseTranscribeFile(Array(arguments.dropFirst()))
         case "context":
             let source = parseSource(arguments.dropFirst())
             return .context(source)
@@ -730,6 +749,59 @@ private enum Command {
 
     private static func parsePrompt<S: Sequence>(_ arguments: S) -> String where S.Element == String {
         parseTrailingValue(arguments, droppingFlags: ["--source"])
+    }
+
+    private static func parseTranscribeFile(_ arguments: [String]) throws -> Command {
+        let filePath = parseTranscribeFileInputPath(arguments)
+        let outputPath = parseFlagValue("--output", in: arguments)
+        let shouldDiarize = arguments.contains("--diarize")
+        let chunkDurationSeconds = try parsePositiveIntegerFlag("--chunk-seconds", in: arguments) ?? 900
+        return .transcribeFile(
+            filePath: filePath,
+            outputPath: outputPath,
+            shouldDiarize: shouldDiarize,
+            chunkDurationSeconds: chunkDurationSeconds
+        )
+    }
+
+    private static func parseTranscribeFileInputPath(_ arguments: [String]) -> String {
+        var index = 0
+        while index < arguments.count {
+            let value = arguments[index]
+            if value == "--diarize" {
+                index += 1
+                continue
+            }
+            if value == "--output" || value == "--chunk-seconds" {
+                index += 2
+                continue
+            }
+            return value
+        }
+        return ""
+    }
+
+    private static func parseFlagValue(_ flag: String, in arguments: [String]) -> String? {
+        guard let index = arguments.firstIndex(of: flag),
+              arguments.indices.contains(index + 1) else {
+            return nil
+        }
+        return arguments[index + 1]
+    }
+
+    private static func parsePositiveIntegerFlag(
+        _ flag: String,
+        in arguments: [String]
+    ) throws -> Int? {
+        guard let value = parseFlagValue(flag, in: arguments) else {
+            return nil
+        }
+
+        guard let integerValue = Int(value), integerValue > 0 else {
+            throw CommandParseError.invalidPositiveIntegerFlag(flag: flag, value: value)
+        }
+
+        return integerValue
     }
 
     private static func parseTrailingValue<S: Sequence>(
@@ -818,6 +890,7 @@ private enum CommandParseError: LocalizedError {
     case invalidSTTAcceleration(String)
     case invalidSTTThreadCount(String)
     case invalidSTTPromptInstruction(String)
+    case invalidPositiveIntegerFlag(flag: String, value: String)
 
     var errorDescription: String? {
         switch self {
@@ -838,6 +911,8 @@ private enum CommandParseError: LocalizedError {
             return "Invalid Whisper thread count '\(value)'. Use a positive integer or 'auto'."
         case .invalidSTTPromptInstruction:
             return "Invalid STT prompt instruction. Use a non-empty string or 'clear-stt-prompt-instruction' to reset it."
+        case .invalidPositiveIntegerFlag(let flag, let value):
+            return "Invalid value '\(value)' for \(flag). Use a positive integer."
         }
     }
 }

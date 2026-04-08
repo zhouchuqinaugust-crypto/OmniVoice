@@ -37,6 +37,9 @@ public struct HistoryEvent: Codable, Sendable {
 }
 
 public struct HistoryStore {
+    private static let maximumEventCount = 1_000
+    private static let fileCoordinator = HistoryFileCoordinator()
+
     private let fileManager: FileManager
     private let historyFilePath: String
 
@@ -70,6 +73,20 @@ public struct HistoryStore {
     }
 
     public func recentEvents(limit: Int = 20) throws -> [HistoryEvent] {
+        try Self.fileCoordinator.withLock {
+            try recentEventsUnlocked(limit: limit)
+        }
+    }
+
+    public func lastTranscript() throws -> HistoryEvent? {
+        try recentEvents(limit: 100).last(where: { $0.kind == .transcript })
+    }
+
+    public func lastAnswer() throws -> HistoryEvent? {
+        try recentEvents(limit: 100).last(where: { $0.kind == .ask })
+    }
+
+    private func recentEventsUnlocked(limit: Int) throws -> [HistoryEvent] {
         guard fileManager.fileExists(atPath: historyFilePath) else {
             return []
         }
@@ -84,37 +101,59 @@ public struct HistoryStore {
 
         return try content
             .split(separator: "\n")
-            .suffix(limit)
+            .suffix(max(0, limit))
             .map { line in
                 try decoder.decode(HistoryEvent.self, from: Data(line.utf8))
             }
     }
 
-    public func lastTranscript() throws -> HistoryEvent? {
-        try recentEvents(limit: 100).last(where: { $0.kind == .transcript })
-    }
-
-    public func lastAnswer() throws -> HistoryEvent? {
-        try recentEvents(limit: 100).last(where: { $0.kind == .ask })
-    }
-
     private func append(_ event: HistoryEvent) throws {
-        let url = URL(fileURLWithPath: historyFilePath)
-        let directoryURL = url.deletingLastPathComponent()
-        try fileManager.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+        try Self.fileCoordinator.withLock {
+            let url = URL(fileURLWithPath: historyFilePath)
+            let directoryURL = url.deletingLastPathComponent()
+            try fileManager.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+
+            let encoder = JSONEncoder()
+            encoder.dateEncodingStrategy = .iso8601
+            let data = try encoder.encode(event)
+
+            if fileManager.fileExists(atPath: historyFilePath) {
+                let handle = try FileHandle(forWritingTo: url)
+                defer { try? handle.close() }
+                try handle.seekToEnd()
+                try handle.write(contentsOf: data)
+                try handle.write(contentsOf: Data("\n".utf8))
+            } else {
+                try Data(data + Data("\n".utf8)).write(to: url)
+            }
+
+            try rotateIfNeeded(url: url)
+        }
+    }
+
+    private func rotateIfNeeded(url: URL) throws {
+        let events = try recentEventsUnlocked(limit: Self.maximumEventCount + 1)
+        guard events.count > Self.maximumEventCount else {
+            return
+        }
 
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
-        let data = try encoder.encode(event)
-
-        if fileManager.fileExists(atPath: historyFilePath) {
-            let handle = try FileHandle(forWritingTo: url)
-            defer { try? handle.close() }
-            try handle.seekToEnd()
-            try handle.write(contentsOf: data)
-            try handle.write(contentsOf: Data("\n".utf8))
-        } else {
-            try Data(data + Data("\n".utf8)).write(to: url)
+        let retainedEvents = events.suffix(Self.maximumEventCount)
+        let data = try retainedEvents.reduce(into: Data()) { partialResult, event in
+            try partialResult.append(encoder.encode(event))
+            partialResult.append(Data("\n".utf8))
         }
+        try data.write(to: url, options: [.atomic])
+    }
+}
+
+private final class HistoryFileCoordinator: @unchecked Sendable {
+    private let lock = NSRecursiveLock()
+
+    func withLock<T>(_ operation: () throws -> T) throws -> T {
+        lock.lock()
+        defer { lock.unlock() }
+        return try operation()
     }
 }

@@ -20,6 +20,7 @@ public enum STTProviderError: LocalizedError, Sendable {
     case speechRecognitionUnauthorized(String)
     case speechRecognizerUnavailable(String)
     case transcriptionFailed(String)
+    case transcriptionTimedOut(Int)
     case unsupportedMode(String)
     case unsupportedAcceleration(String)
     case invalidMLXResponse(String)
@@ -48,6 +49,8 @@ public enum STTProviderError: LocalizedError, Sendable {
             return "Speech recognizer is unavailable: \(reason)"
         case .transcriptionFailed(let reason):
             return "Speech transcription failed: \(reason)"
+        case .transcriptionTimedOut(let seconds):
+            return "Speech transcription timed out after \(seconds) seconds."
         case .unsupportedMode(let mode):
             return "The configured STT mode is not supported yet: \(mode)"
         case .unsupportedAcceleration(let acceleration):
@@ -58,7 +61,7 @@ public enum STTProviderError: LocalizedError, Sendable {
     }
 }
 
-private enum TranscriptSanitizer {
+enum TranscriptSanitizer {
     private static let builtInPromptArtifacts: Set<String> = Set(
         [
             ChineseScriptPreference.preserve.whisperPromptInstruction,
@@ -278,7 +281,11 @@ public struct LocalWhisperProvider: STTProviding {
 
         let result: ProcessResult
         if let cancellableRunner = processRunner as? any CancellableProcessRunning {
-            result = try await cancellableRunner.runCancellable(executable: binaryPath, arguments: arguments)
+            result = try await runShortTranscriptionProcess(
+                executable: binaryPath,
+                arguments: arguments,
+                cancellableRunner: cancellableRunner
+            )
         } else {
             result = try processRunner.run(executable: binaryPath, arguments: arguments)
         }
@@ -482,7 +489,11 @@ public struct MLXWhisperProvider: STTProviding {
 
         let result: ProcessResult
         if let cancellableRunner = processRunner as? any CancellableProcessRunning {
-            result = try await cancellableRunner.runCancellable(executable: pythonPath, arguments: arguments)
+            result = try await runShortTranscriptionProcess(
+                executable: pythonPath,
+                arguments: arguments,
+                cancellableRunner: cancellableRunner
+            )
         } else {
             result = try processRunner.run(executable: pythonPath, arguments: arguments)
         }
@@ -683,6 +694,36 @@ public final class AppleSpeechProvider: STTProviding, @unchecked Sendable {
 }
 
 public enum STTProviderFactory {
+    public static func resolveConfiguration(
+        _ configuration: STTConfiguration,
+        autodiscoverer: STTAutodiscoverer = STTAutodiscoverer()
+    ) -> STTConfiguration {
+        switch configuration.mode {
+        case .appleSpeech, .cloudBackup:
+            return configuration
+        case .localWhisper:
+            if configuration.acceleration == .mlx {
+                return resolvedMLXConfiguration(configuration, autodiscoverer: autodiscoverer)
+            }
+            return resolvedWhisperConfiguration(configuration, autodiscoverer: autodiscoverer)
+        case .automaticLocal:
+            if configuration.acceleration == .mlx {
+                let resolvedMLX = resolvedMLXConfiguration(configuration, autodiscoverer: autodiscoverer)
+                if hasUsableMLXConfiguration(resolvedMLX) {
+                    return resolvedMLX
+                }
+            }
+
+            let resolvedWhisper = resolvedWhisperConfiguration(configuration, autodiscoverer: autodiscoverer)
+            if let binaryPath = resolvedWhisper.binaryPath, !binaryPath.isEmpty,
+               let modelPath = resolvedWhisper.modelPath, !modelPath.isEmpty {
+                return resolvedWhisper
+            }
+
+            return configuration
+        }
+    }
+
     public static func makeProvider(
         configuration: STTConfiguration,
         autodiscoverer: STTAutodiscoverer = STTAutodiscoverer(),
@@ -867,14 +908,34 @@ extension DefaultProcessRunner: CancellableProcessRunning {
             }
         } onCancel: {
             if process.isRunning {
-                process.interrupt()
-                DispatchQueue.global().asyncAfter(deadline: .now() + 0.2) {
-                    if process.isRunning {
-                        process.terminate()
-                    }
-                }
+                process.terminate()
             }
         }
+    }
+}
+
+private let shortTranscriptionTimeoutSeconds = 45
+
+private func runShortTranscriptionProcess(
+    executable: String,
+    arguments: [String],
+    cancellableRunner: any CancellableProcessRunning
+) async throws -> ProcessResult {
+    try await withThrowingTaskGroup(of: ProcessResult.self) { group in
+        group.addTask {
+            try await cancellableRunner.runCancellable(executable: executable, arguments: arguments)
+        }
+        group.addTask {
+            try await Task.sleep(for: .seconds(shortTranscriptionTimeoutSeconds))
+            throw STTProviderError.transcriptionTimedOut(shortTranscriptionTimeoutSeconds)
+        }
+
+        guard let result = try await group.next() else {
+            group.cancelAll()
+            throw STTProviderError.transcriptionTimedOut(shortTranscriptionTimeoutSeconds)
+        }
+        group.cancelAll()
+        return result
     }
 }
 

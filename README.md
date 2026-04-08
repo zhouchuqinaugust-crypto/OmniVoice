@@ -140,6 +140,14 @@ Notes:
   - `./.build/debug/OmniVoice set-stt-acceleration mlx`
 - The first run downloads the configured MLX model from Hugging Face into the local cache.
 
+## Offline file transcription
+
+- `transcribe-file` turns a local recording straight into a `.txt` file.
+- Long recordings are chunked automatically so hour-plus meetings do not have to be loaded into memory as one giant transcription job.
+- PCM WAV works out of the box. Common formats like `m4a`, `mp3`, and `mp4` use `ffmpeg` when available, otherwise the macOS `afconvert` fallback is used.
+- Speaker labeling is optional. OmniVoice will try it only when you pass `--diarize`, `pyannote.audio` is installed, and a Hugging Face token is available in `PYANNOTE_AUTH_TOKEN`, `HF_TOKEN`, or `HUGGINGFACE_TOKEN`.
+- If speaker labeling is unavailable, OmniVoice still exports the transcript and adds a warning to the JSON result instead of failing the whole job.
+
 ## CLI examples
 
 ```bash
@@ -151,6 +159,9 @@ Notes:
 ./.build/debug/OmniVoice ask --source screenshot "这张截图里的报错是什么意思？"
 ./.build/debug/OmniVoice insert --source auto "把这段文字贴到当前输入框"
 ./.build/debug/OmniVoice transcribe sample.wav --source auto --insert
+./.build/debug/OmniVoice transcribe-file meeting.m4a
+./.build/debug/OmniVoice transcribe-file meeting.m4a --output meeting.txt
+./.build/debug/OmniVoice transcribe-file panel.wav --diarize --chunk-seconds 1200
 ./.build/debug/OmniVoice history
 ./.build/debug/OmniVoice doctor
 ./.build/debug/OmniVoice request-permissions
@@ -173,6 +184,7 @@ Notes:
   - Copy last transcript
   - Copy last answer
   - Open History for recent transcript/answer events
+  - Open a drag-and-drop audio file transcription window for exporting local recordings to `.txt`
   - Ask from selected text
   - Ask from clipboard
   - Ask from recent screenshot
